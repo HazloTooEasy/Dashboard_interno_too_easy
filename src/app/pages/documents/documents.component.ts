@@ -367,7 +367,7 @@ export class DocumentsComponent implements OnInit {
     this.cdr.markForCheck();
 
     try {
-      await this.supabase.deleteDocument(doc.id, doc.storage_path);
+      await this.supabase.deleteDocument(doc.id, doc.storage_path, doc.drive_file_id);
       await this.loadDocuments();
     } catch (error) {
       console.error("Error eliminando documento:", error);

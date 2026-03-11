@@ -323,7 +323,23 @@ export class SupabaseService {
         }
     }
 
-    async deleteDocument(id: string, storagePath: string | null) {
+    async deleteFromGoogleDrive(fileId: string) {
+        const { data, error } = await this.supabase.functions.invoke('google-drive-sync?fileId=' + fileId, {
+            method: 'DELETE'
+        });
+
+        if (error) throw error;
+        return data;
+    }
+
+    async deleteDocument(id: string, storagePath: string | null, driveFileId?: string | null) {
+        if (driveFileId) {
+            try {
+               await this.deleteFromGoogleDrive(driveFileId);
+            } catch (e) {
+               console.warn("Could not delete from Google Drive", e);
+            }
+        }
         if (storagePath) {
             await this.supabase.storage.from('documents').remove([storagePath]);
         }
