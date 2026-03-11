@@ -54,12 +54,16 @@ import { SupabaseService } from '../../core/services/supabase.service';
             </div>
             <div class="p-6">
               <div class="flex gap-2 h-12 rounded-lg overflow-hidden mb-6">
-                <!-- Se podría hacer dinámico más adelante -->
-                <div class="bg-blue-100 w-[20%] flex items-center justify-center text-xs font-medium text-blue-700" title="Nuevos (12)">12</div>
-                <div class="bg-amber-100 w-[30%] flex items-center justify-center text-xs font-medium text-amber-700" title="Contactados (18)">18</div>
-                <div class="bg-purple-100 w-[25%] flex items-center justify-center text-xs font-medium text-purple-700" title="Reunión (15)">15</div>
-                <div class="bg-brand-100 w-[15%] flex items-center justify-center text-xs font-medium text-brand-700" title="Propuesta (9)">9</div>
-                <div class="bg-emerald-100 w-[10%] flex items-center justify-center text-xs font-medium text-emerald-700" title="Negociación (6)">6</div>
+                <!-- Data dynamically loaded from database -->
+                @for (stage of pipelineStages; track stage.name) {
+                  @if (stage.percentage > 0) {
+                    <div [class]="stage.bgClass + ' flex items-center justify-center text-xs font-medium ' + stage.textClass" 
+                         [style.width.%]="stage.percentage" 
+                         [title]="stage.name + ' (' + stage.count + ')'">
+                      {{ stage.count > 0 ? stage.count : '' }}
+                    </div>
+                  }
+                }
               </div>
               <div class="flex justify-between text-sm text-gray-500">
                 <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-400"></span> Nuevos</div>
@@ -200,11 +204,19 @@ import { SupabaseService } from '../../core/services/supabase.service';
   `
 })
 export class HomeComponent implements OnInit {
-  kpis = [
-    { label: 'Ingresos Estimados', value: '€45,200', trend: 12.5, icon: 'payments', colorClass: 'bg-emerald-100 text-emerald-600' },
-    { label: 'Nuevos Leads', value: '24', trend: 8.2, icon: 'person_add', colorClass: 'bg-blue-100 text-blue-600' },
-    { label: 'Proyectos Activos', value: '12', trend: -2.4, icon: 'folder_open', colorClass: 'bg-purple-100 text-purple-600' },
-    { label: 'Tareas Completadas', value: '148', trend: 15.3, icon: 'task_alt', colorClass: 'bg-brand-100 text-brand-600' },
+  kpis: any[] = [
+    { label: 'Ingresos Estimados', value: '...', trend: 0, icon: 'payments', colorClass: 'bg-emerald-100 text-emerald-600' },
+    { label: 'Nuevos Leads', value: '...', trend: 0, icon: 'person_add', colorClass: 'bg-blue-100 text-blue-600' },
+    { label: 'Proyectos Activos', value: '...', trend: 0, icon: 'folder_open', colorClass: 'bg-purple-100 text-purple-600' },
+    { label: 'Tareas Completadas', value: '...', trend: 0, icon: 'task_alt', colorClass: 'bg-brand-100 text-brand-600' },
+  ];
+
+  pipelineStages = [
+    { name: 'Nuevos', count: 0, percentage: 20, bgClass: 'bg-blue-100', textClass: 'text-blue-700' },
+    { name: 'Contactados', count: 0, percentage: 20, bgClass: 'bg-amber-100', textClass: 'text-amber-700' },
+    { name: 'Reunión', count: 0, percentage: 20, bgClass: 'bg-purple-100', textClass: 'text-purple-700' },
+    { name: 'Propuesta', count: 0, percentage: 20, bgClass: 'bg-brand-100', textClass: 'text-brand-700' },
+    { name: 'Negociación', count: 0, percentage: 20, bgClass: 'bg-emerald-100', textClass: 'text-emerald-700' }
   ];
 
   userName = 'Workspace';
@@ -231,12 +243,13 @@ export class HomeComponent implements OnInit {
 
   async loadData() {
     try {
-      const [profile, projects, tasks, meetings, activities] = await Promise.all([
+      const [profile, projects, tasks, meetings, activities, stats] = await Promise.all([
         this.supabase.getMyProfile(),
         this.supabase.getActiveProjects(),
         this.supabase.getTodayTasks(),
         this.supabase.getUpcomingMeetings(),
-        this.supabase.getRecentActivity()
+        this.supabase.getRecentActivity(),
+        this.supabase.getReportStats() // Carga los KPIs reales de la base de datos
       ]);
 
       if (profile?.full_name) {
@@ -247,6 +260,46 @@ export class HomeComponent implements OnInit {
       this.tasks = tasks;
       this.meetings = meetings;
       this.activities = activities;
+
+      // Calcular KPIs a partir de datos reales
+      const totalIngresos = stats.leads?.reduce((acc: number, l: any) => acc + (Number(l.estimated_value) || 0), 0) || 0;
+      const nuevosLeads = stats.leads?.filter((l: any) => l.status === 'new').length || 0;
+      const proyectosActivos = stats.projects?.filter((p: any) => ['in_progress', 'planning', 'briefing', 'review'].includes(p.status)).length || 0;
+      const tareasCompletadas = stats.tasks?.filter((t: any) => t.status === 'completed').length || 0;
+
+      this.kpis = [
+        { label: 'Ingresos Estimados', value: `€${totalIngresos.toLocaleString('es-ES')}`, trend: 0, icon: 'payments', colorClass: 'bg-emerald-100 text-emerald-600' },
+        { label: 'Nuevos Leads', value: nuevosLeads.toString(), trend: 0, icon: 'person_add', colorClass: 'bg-blue-100 text-blue-600' },
+        { label: 'Proyectos Activos', value: proyectosActivos.toString(), trend: 0, icon: 'folder_open', colorClass: 'bg-purple-100 text-purple-600' },
+        { label: 'Tareas Completadas', value: tareasCompletadas.toString(), trend: 0, icon: 'task_alt', colorClass: 'bg-brand-100 text-brand-600' },
+      ];
+
+      // Configurar datos para el Pipeline del CRM
+      if (stats.leads) {
+        // Mapa estándar de estados a índice
+        const pipelineStatusMap: Record<string, number> = {
+            'new': 0, 'contacted': 1, 'meeting': 2, 'proposal': 3, 'negotiation': 4
+        };
+        const counts = [0, 0, 0, 0, 0];
+        let totalLeads = 0;
+
+        stats.leads.forEach((l: any) => {
+            const idx = pipelineStatusMap[l.status];
+            if (idx !== undefined) {
+                counts[idx]++;
+                totalLeads++;
+            }
+        });
+
+        // Actualiza el array de pipelineStages solo si hay al menos un lead (para evitar división por 0)
+        if (totalLeads > 0) {
+            this.pipelineStages.forEach((stage, idx) => {
+                stage.count = counts[idx];
+                stage.percentage = (counts[idx] / totalLeads) * 100;
+            });
+        }
+      }
+
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
