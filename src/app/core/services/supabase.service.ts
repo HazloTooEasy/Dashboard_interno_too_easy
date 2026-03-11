@@ -301,6 +301,8 @@ export class SupabaseService {
             if (uploadError) throw uploadError;
 
             // 3. Database Entry
+            const { data: { user } } = await this.supabase.auth.getUser();
+            
             const { data, error } = await this.supabase.from('documents').insert([{
                 name: file.name,
                 size: file.size,
@@ -308,7 +310,8 @@ export class SupabaseService {
                 storage_path: filePath,
                 drive_file_id: driveFile.fileId,
                 project_id: projectId || null,
-                client_id: clientId || null
+                client_id: clientId || null,
+                uploader_id: user?.id || null
             }]).select();
 
             if (error) throw error;
